@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import tkinter as tk
 from tkinter import ttk
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence
 
 from models.process import Process
 
@@ -75,3 +75,85 @@ class ReadyRingFrame(ttk.Frame):
             )
             short = proc.name if len(proc.name) <= 10 else proc.name[:9] + "…"
             c.create_text(x, y + 10, text=short, fill="#aaaaaa", font=("Segoe UI", 8))
+
+
+class EventLogFrame(ttk.Frame):
+    """Registro coloreado de eventos del SimulatorLogger."""
+
+    _MAX_LINES = 200
+
+    def __init__(self, parent: tk.Misc, **kwargs: object) -> None:
+        super().__init__(parent, **kwargs)
+        self._next_index = 0
+        self._text = tk.Text(
+            self,
+            height=12,
+            wrap=tk.WORD,
+            font=("Consolas", 10),
+            relief=tk.FLAT,
+            borderwidth=0,
+            background="#1e1e1e",
+            foreground="#d4d4d4",
+            insertbackground="#ffffff",
+        )
+        scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self._text.yview)
+        self._text.configure(yscrollcommand=scroll.set)
+        self._text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        palette = {
+            "rr": "#56d4dd",
+            "syscall": "#e3b341",
+            "done": "#3fb950",
+            "fault": "#f85149",
+            "lifecycle": "#f0f6fc",
+            "cpu": "#a371f7",
+            "wakeup": "#79c0ff",
+            "burst": "#8b949e",
+        }
+        self._text.tag_configure("default", foreground="#c9d1d9")
+        for name, color in palette.items():
+            self._text.tag_configure(name, foreground=color)
+
+    def _tag_for_line(self, line: str) -> str:
+        if line.startswith("[") and "]" in line:
+            label_chunk = line[1 : line.index("]")].strip().lower()
+            first = label_chunk.split()[0] if label_chunk else ""
+            for key in (
+                "rr",
+                "syscall",
+                "done",
+                "fault",
+                "lifecycle",
+                "cpu",
+                "wakeup",
+                "burst",
+            ):
+                if first.startswith(key):
+                    return key
+        return "default"
+
+    def refresh_from_records(self, records: Sequence[str]) -> None:
+        if self._next_index >= len(records):
+            return
+        new_chunk = records[self._next_index :]
+        self._next_index = len(records)
+
+        self._text.configure(state=tk.NORMAL)
+        for line in new_chunk:
+            tag = self._tag_for_line(line)
+            self._text.insert(tk.END, line + "\n", (tag,))
+
+        total_lines = int(self._text.index("end-1c").split(".")[0])
+        if total_lines > self._MAX_LINES:
+            trim = total_lines - self._MAX_LINES
+            self._text.delete("1.0", f"{trim + 1}.0")
+        self._text.see(tk.END)
+        self._text.configure(state=tk.DISABLED)
+
+    def reset(self) -> None:
+        self._next_index = 0
+        self._text.configure(state=tk.NORMAL)
+        self._text.delete("1.0", tk.END)
+        self._text.configure(state=tk.DISABLED)
+

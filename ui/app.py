@@ -9,7 +9,7 @@ from typing import Optional
 from simulator import OSSimulator
 
 from ui.scenario import populate_demo_processes
-from ui.widgets import ReadyRingFrame
+from ui.widgets import EventLogFrame, ReadyRingFrame
 
 
 class SimulatorApp:
@@ -66,13 +66,15 @@ class SimulatorApp:
 
         log_frame = ttk.LabelFrame(root, text="Log de eventos", padding=6)
         log_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False)
-        self._log_placeholder = ttk.Label(log_frame, text="(log — pendiente)")
-        self._log_placeholder.pack(anchor=tk.W)
+        self._log_panel = EventLogFrame(log_frame)
+        self._log_panel.pack(fill=tk.BOTH, expand=True)
 
         self._kernel = self._build_kernel()
         self._update_clock_title()
         self._rr_panel._canvas.bind("<Configure>", self._on_rr_resize)
         self._refresh_panels()
+
+    def _on_rr_resize(self, _evt: tk.Event) -> None:
         self._rr_panel.refresh(
             self._kernel.scheduler_gate.walk_ready_ring(),
             self._kernel.scheduler_gate.current_process(),
@@ -87,6 +89,7 @@ class SimulatorApp:
     def _on_reset(self) -> None:
         self._stop_auto()
         self._kernel = self._build_kernel()
+        self._log_panel.reset()
         self._update_clock_title()
         self._refresh_panels()
 
@@ -126,6 +129,7 @@ class SimulatorApp:
             self._kernel.scheduler_gate.walk_ready_ring(),
             self._kernel.scheduler_gate.current_process(),
         )
+        self._log_panel.refresh_from_records(self._kernel.trace_sink().records)
 
     @property
     def root(self) -> tk.Tk:
