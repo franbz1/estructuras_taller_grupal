@@ -40,7 +40,8 @@ class RoundRobinScheduler:
         if process.state == ProcessState.TERMINATED:
             raise RuntimeError("Cannot schedule terminated workloads")
         process.mark_ready()
-        process.reset_quantum_slice(self.quantum)
+        quantum_slice = process.custom_quantum if process.custom_quantum is not None else self._quantum
+        process.reset_quantum_slice(quantum_slice)
         self._ready_ring.insert_by_priority(process)
 
     def rotate_scheduler_pointer(self) -> Optional[Process]:
