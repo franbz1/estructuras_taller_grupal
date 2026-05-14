@@ -35,6 +35,10 @@ class PCBTable:
 
     def add_process(self, process: _HasPidAndName) -> int:
         """Registers `process`; returns PID index."""
+        moniker = getattr(process, "name", None)
+        if not isinstance(moniker, str) or not moniker.strip():
+            raise ValueError("PCB requires non-empty textual process names")
+
         pid = process.pid
         if pid < 0 or pid >= self._size:
             raise ValueError("process.pid is outside PCB capacity")

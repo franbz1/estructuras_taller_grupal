@@ -23,3 +23,8 @@ python main.py
 - `models/` — domain objects (`Process`, `IODevice`, enums).
 - `simulator/` — scheduling, I/O subsystems and top-level simulator.
 - `utils/` — structured logging helpers.
+
+## Collaboration workflow
+
+Course commits rotate authorship with `git -c user.name=... -c user.email=...` so each teammate appears in history while leaving code and identifiers in English.
+
