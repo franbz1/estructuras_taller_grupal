@@ -50,6 +50,9 @@ class Process:
     pending_io_keyword: Optional[str] = None
     cpu_registers: list[int] = field(default_factory=lambda: [0] * 8)
     call_stack: CallStack = field(default_factory=CallStack)
+    arrival_tick: int = -1
+    start_tick: int = -1
+    finish_tick: int = -1
 
     def __post_init__(self) -> None:
         if not self.plan:

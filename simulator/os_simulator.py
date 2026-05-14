@@ -72,6 +72,7 @@ class OSSimulator:
 
         sculpted_plan = tuple(tuple(step) for step in plan)
         rookie = Process(pid=slot_hint, name=name, priority=priority, plan=sculpted_plan)
+        rookie.arrival_tick = self._clock
 
         try:
             self._pcb_board.add_process(rookie)
@@ -110,6 +111,8 @@ class OSSimulator:
             return
 
         current.mark_running()
+        if current.start_tick == -1:
+            current.start_tick = self._clock
 
         try:
             current.consume_cpu_micro_step(self._clock)
@@ -160,6 +163,25 @@ class OSSimulator:
 
         pcb_pressure = sum(1 for _ in self._pcb_board.all_registered())
 
+        per_process_stats: List[Mapping[str, object]] = []
+        for phantom in self._registry:
+            if phantom.finish_tick < 0:
+                continue
+            turnaround = phantom.finish_tick - phantom.arrival_tick
+            service_span = phantom.finish_tick - phantom.start_tick
+            waiting = turnaround - service_span
+            per_process_stats.append(
+                {
+                    "pid": phantom.pid,
+                    "name": phantom.name,
+                    "arrival_tick": phantom.arrival_tick,
+                    "start_tick": phantom.start_tick,
+                    "finish_tick": phantom.finish_tick,
+                    "turnaround_ticks": turnaround,
+                    "waiting_ticks": waiting,
+                }
+            )
+
         backlog: MutableMapping[str, int] = {}
         for bridge_type, facade in self._io.devices_snapshot().items():
             backlog[bridge_type.name.lower()] = facade.backlog_len()
@@ -173,7 +195,9 @@ class OSSimulator:
             "process_states": dict(state_bins),
             "registered_process_total": len(self._registry),
             "round_robin_depth": rr_richness,
-            "ready_ring_order": ring_outline,            "io_device_backlogs": dict(backlog),
+            "ready_ring_order": ring_outline,
+            "per_process_stats": per_process_stats,
+            "io_device_backlogs": dict(backlog),
             "telemetry_buckets": self._logger.buckets_snapshot(),
         }
 
@@ -225,6 +249,7 @@ class OSSimulator:
         return False
 
     def _finalize_process_accounts(self, proc: Process) -> None:
+        proc.finish_tick = self._clock
         self._scheduler.dequeue_matching(lambda runnable: runnable.pid == proc.pid)
         self._pcb_board.remove_process(proc.pid)
         if proc.state != ProcessState.TERMINATED:
