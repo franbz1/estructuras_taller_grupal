@@ -20,6 +20,7 @@ class OSSimulator:
     """
 
     __slots__ = (
+        "_aging_interval",
         "_clock",
         "_io",
         "_logger",
@@ -34,9 +35,12 @@ class OSSimulator:
         pcb_capacity: int = 96,
         default_quantum: int = 4,
         verbosity: bool = True,
+        aging_interval: int = 5,
     ) -> None:
         if pcb_capacity <= 0:
             raise ValueError("PCB backing store must expose positive capacity")
+        if aging_interval <= 0:
+            raise ValueError("Priority aging interval must stay positive")
 
         self._pcb_board = PCBTable(pcb_capacity)
         self._scheduler = RoundRobinScheduler(default_quantum)
@@ -44,6 +48,7 @@ class OSSimulator:
         self._logger = SimulatorLogger(emit_to_stdout=verbosity)
         self._registry: List[Process] = []
         self._clock = 0
+        self._aging_interval = aging_interval
         self._boot_idle_process()
 
     @property
@@ -95,6 +100,18 @@ class OSSimulator:
 
         return rookie
 
+    def _apply_priority_aging(self) -> None:
+        """Boost priorities for READY workloads that sit too long in the RR ring."""
+
+        for proc in self._scheduler.walk_ready_ring():
+            if proc.is_idle:
+                continue
+            if proc.state != ProcessState.READY:
+                continue
+            proc.ready_ticks += 1
+            if proc.ready_ticks % self._aging_interval == 0:
+                proc.priority += 1
+
     def _boot_idle_process(self) -> None:
         """Reserve PID 0 as a permanent idle workload whenever no real job is runnable."""
 
@@ -107,6 +124,7 @@ class OSSimulator:
     # ---------------------------------------------------------------- simulation kernel
     def tick(self) -> None:
         self._clock += 1
+        self._apply_priority_aging()
 
         for released in self._io.tick():
             self._finalize_device_feedback(released)
