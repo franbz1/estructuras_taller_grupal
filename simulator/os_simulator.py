@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Mapping, MutableMapping, Sequence, Tuple
+from typing import List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 from data_structures.array import PCBFullError, PCBTable
 from models.process import IOSyscallPending, LiteralBurst, Process, ProcessState
@@ -71,14 +71,24 @@ class OSSimulator:
         return self._logger
 
     # ---------------------------------------------------------------- ingestion
-    def create_process(self, name: str, priority: int, plan: Sequence[Tuple[str, ...]]) -> Process:
+    def create_process(
+        self,
+        name: str,
+        priority: int,
+        plan: Sequence[Tuple[str, ...]],
+        *,
+        quantum: Optional[int] = None,
+    ) -> Process:
         slot_hint = self._pcb_board.first_available_slot()
         if slot_hint is None:
             raise PCBFullError("No free PCB slots available")
+        if quantum is not None and quantum <= 0:
+            raise ValueError("Per-process quantum overrides must stay positive integers")
 
         sculpted_plan = tuple(tuple(step) for step in plan)
         rookie = Process(pid=slot_hint, name=name, priority=priority, plan=sculpted_plan)
         rookie.arrival_tick = self._clock
+        rookie.custom_quantum = quantum
 
         try:
             self._pcb_board.add_process(rookie)
@@ -165,14 +175,14 @@ class OSSimulator:
             self._scheduler.rotate_scheduler_pointer()
             successor = self._scheduler.current_process()
 
-            successor_pid = successor.pid if successor else "∅"
+            successor_pid = successor.pid if successor else "none"
             self._logger.record(
                 "rr",
-                f"Quantum shelf drained — rollover pid={previous.pid} → pid={successor_pid}",
+                f"Quantum shelf drained — rollover pid={previous.pid} -> pid={successor_pid}",
             )
 
             if successor:
-                successor.reset_quantum_slice(self._scheduler.quantum)
+                successor.reset_quantum_slice(self._effective_quantum(successor))
                 successor.mark_running()
 
     def run(self, total_ticks: int) -> None:
@@ -272,7 +282,7 @@ class OSSimulator:
             )
             return True
 
-        proc.reset_quantum_slice(self._scheduler.quantum)
+        proc.reset_quantum_slice(self._effective_quantum(proc))
         self._logger.record(
             "burst",
             f"Activated next CPU slug pid={proc.pid} leftover={proc.cpu_burst_remaining}",
@@ -288,3 +298,10 @@ class OSSimulator:
         self._pcb_board.remove_process(proc.pid)
         if proc.state != ProcessState.TERMINATED:
             proc.finalize_termination_cleanup()
+
+    def _effective_quantum(self, proc: Process) -> int:
+        """Returns the scheduler quantum slice honoring optional per-process overrides."""
+
+        if proc.custom_quantum is not None:
+            return proc.custom_quantum
+        return self._scheduler.quantum

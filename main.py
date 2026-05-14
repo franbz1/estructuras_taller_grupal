@@ -25,6 +25,7 @@ def main() -> None:
             ("io", "network", 2),
             ("cpu", 3),
         ),
+        quantum=2,
     )
     kernel.create_process(
         "logger_agent",
