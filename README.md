@@ -1,37 +1,45 @@
-# OS Process Scheduler Simulator
+# Simulador de planificación de procesos (caso de estudio)
 
-Educational simulator of process scheduling inside a multitasking-like kernel toy model.
+## Caso de estudio
 
-It exercises four custom-built data structures:
+Se modela un **núcleo simplificado** donde varios procesos compiten por la CPU bajo **Round Robin (RR)**, realizan **rafagas de CPU** y se **bloquean en E/S** (disco, red, impresora) antes de volver a la cola de listos. El objetivo pedagógico es **ver en acción cuatro estructuras de datos propias** que sostienen el estado del sistema: sin ellas no hay tabla de PCBs, anillo de listos, seguimiento de syscalls ni colas de dispositivos.
 
-- **Fixed array (`PCBTable`)** — \(O(1)\) PCB lookup by PID
-- **Doubly-linked circular list** — ready queue used for Round-Robin traversal
-- **Stack (`CallStack`)** — modeled per-process activation records / syscall nesting
-- **Linked queue (`IOQueue`)** — FIFO wait lists for device drivers
+## Proyecto
 
-Language: Python 3.10+. All source code identifiers and comments are in English.
+- **Lenguaje:** Python 3.10+ (código y comentarios del repositorio en inglés).
+- **Núcleo:** `OSSimulator` integra tabla de PCBs, planificador RR, gestor de E/S y bitácora de eventos.
+- **Cargas de trabajo:** planes deterministas (`cpu` / `io`) definidos en tuplas; la demo en consola y la UI usan el mismo escenario de varios procesos concurrentes.
+- **Interfaz gráfica (opcional):** Tkinter muestra en tiempo real **PCB**, **anillo RR**, **colas por dispositivo** y **log** de eventos; informe vía `generate_report()`.
 
-Run the demo:
+### Estructuras implementadas
+
+| Estructura | Rol en el simulador |
+|------------|---------------------|
+| `PCBTable` (arreglo fijo) | Reserva y consulta de PCBs por PID |
+| Lista circular doble | Cola de **READY** y recorrido del cursor RR |
+| `CallStack` | Registro de contexto en bloqueos por syscall |
+| `IOQueue` | Espera FIFO por dispositivo de E/S |
+
+### Ejecución
 
 ```bash
 python main.py
 ```
 
-Graphical UI (Tkinter, standard library):
+Interfaz gráfica (biblioteca estándar):
 
 ```bash
 python ui_main.py
 ```
 
-## Package layout
+### Organización del repositorio
 
-- `data_structures/` — custom ADT implementations used by higher layers.
-- `models/` — domain objects (`Process`, `IODevice`, enums).
-- `simulator/` — scheduling, I/O subsystems and top-level simulator.
-- `utils/` — structured logging helpers.
-- `ui/` — Tkinter front-end for live PCB, RR ring, I/O queues and event log.
+- `data_structures/` — ADTs anteriores.
+- `models/` — `Process`, dispositivos, enums.
+- `simulator/` — planificación, E/S y `OSSimulator`.
+- `utils/` — registro estructurado de la línea de tiempo.
+- `ui/` — ventana Tkinter sobre el mismo motor.
 
-## Collaboration workflow
+### Colaboración
 
-Course commits rotate authorship with `git -c user.name=... -c user.email=...` so each teammate appears in history while leaving code and identifiers in English.
-
+Los commits del curso pueden rotar autoría con `git -c user.name=... -c user.email=...` para reflejar a cada integrante en el historial.
