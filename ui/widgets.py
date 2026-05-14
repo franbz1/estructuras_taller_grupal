@@ -10,6 +10,55 @@ from typing import Iterable, Optional, Sequence
 from models.process import Process
 
 
+class PCBTableFrame(ttk.Frame):
+    """Tabla Treeview con estado de cada proceso registrado."""
+
+    def __init__(self, parent: tk.Misc, **kwargs: object) -> None:
+        super().__init__(parent, **kwargs)
+        cols = ("pid", "name", "pri", "state", "cpu_rem", "q_rem")
+        self._tree = ttk.Treeview(self, columns=cols, show="headings", height=12)
+        headings = {
+            "pid": "PID",
+            "name": "Nombre",
+            "pri": "Pri",
+            "state": "Estado",
+            "cpu_rem": "CPU rest.",
+            "q_rem": "Quantum",
+        }
+        widths = {"pid": 44, "name": 120, "pri": 40, "state": 88, "cpu_rem": 72, "q_rem": 64}
+        for cid in cols:
+            self._tree.heading(cid, text=headings[cid])
+            self._tree.column(cid, width=widths[cid], stretch=True)
+
+        scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self._tree.yview)
+        self._tree.configure(yscrollcommand=scroll.set)
+        self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        for tag, fg in (
+            ("ready", "#1f6feb"),
+            ("running", "#1a7f37"),
+            ("blocked", "#9a6700"),
+            ("terminated", "#6e7781"),
+        ):
+            self._tree.tag_configure(tag, foreground=fg)
+
+    def refresh(self, registry: Sequence[Process]) -> None:
+        self._tree.delete(*self._tree.get_children())
+        for proc in sorted(registry, key=lambda p: p.pid):
+            state = proc.state.name
+            tag = proc.state.name.lower()
+            vals = (
+                proc.pid,
+                proc.name,
+                proc.priority,
+                state,
+                proc.cpu_burst_remaining,
+                proc.quantum_remaining,
+            )
+            self._tree.insert("", tk.END, values=vals, tags=(tag,))
+
+
 class ReadyRingFrame(ttk.Frame):
     """Dibujo del anillo Round Robin en un lienzo."""
 

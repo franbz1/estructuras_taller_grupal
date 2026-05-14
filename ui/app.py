@@ -9,7 +9,7 @@ from typing import Optional
 from simulator import OSSimulator
 
 from ui.scenario import populate_demo_processes
-from ui.widgets import EventLogFrame, ReadyRingFrame
+from ui.widgets import EventLogFrame, PCBTableFrame, ReadyRingFrame
 
 
 class SimulatorApp:
@@ -51,9 +51,10 @@ class SimulatorApp:
         upper = ttk.Frame(root, padding=(6, 0))
         upper.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self._pcb_placeholder = ttk.LabelFrame(upper, text="Tabla PCB", padding=8)
+        self._pcb_placeholder = ttk.LabelFrame(upper, text="Tabla PCB", padding=4)
         self._pcb_placeholder.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
-        ttk.Label(self._pcb_placeholder, text="(panel PCB — pendiente)").pack(anchor=tk.W)
+        self._pcb_panel = PCBTableFrame(self._pcb_placeholder)
+        self._pcb_panel.pack(fill=tk.BOTH, expand=True)
 
         self._rr_placeholder = ttk.LabelFrame(upper, text="Anillo Round Robin", padding=4)
         self._rr_placeholder.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4)
@@ -125,6 +126,7 @@ class SimulatorApp:
         self._clock_var.set(f"Reloj: {self._kernel.clock}")
 
     def _refresh_panels(self) -> None:
+        self._pcb_panel.refresh(self._kernel._registry)
         self._rr_panel.refresh(
             self._kernel.scheduler_gate.walk_ready_ring(),
             self._kernel.scheduler_gate.current_process(),
