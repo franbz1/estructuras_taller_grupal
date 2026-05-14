@@ -9,6 +9,7 @@ from typing import Optional
 from simulator import OSSimulator
 
 from ui.scenario import populate_demo_processes
+from ui.widgets import ReadyRingFrame
 
 
 class SimulatorApp:
@@ -54,9 +55,10 @@ class SimulatorApp:
         self._pcb_placeholder.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
         ttk.Label(self._pcb_placeholder, text="(panel PCB — pendiente)").pack(anchor=tk.W)
 
-        self._rr_placeholder = ttk.LabelFrame(upper, text="Anillo Round Robin", padding=8)
+        self._rr_placeholder = ttk.LabelFrame(upper, text="Anillo Round Robin", padding=4)
         self._rr_placeholder.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4)
-        ttk.Label(self._rr_placeholder, text="(panel RR — pendiente)").pack(anchor=tk.W)
+        self._rr_panel = ReadyRingFrame(self._rr_placeholder)
+        self._rr_panel.pack(fill=tk.BOTH, expand=True)
 
         self._io_placeholder = ttk.LabelFrame(upper, text="Dispositivos I/O", padding=8)
         self._io_placeholder.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
@@ -69,6 +71,12 @@ class SimulatorApp:
 
         self._kernel = self._build_kernel()
         self._update_clock_title()
+        self._rr_panel._canvas.bind("<Configure>", self._on_rr_resize)
+        self._refresh_panels()
+        self._rr_panel.refresh(
+            self._kernel.scheduler_gate.walk_ready_ring(),
+            self._kernel.scheduler_gate.current_process(),
+        )
 
     def _build_kernel(self) -> OSSimulator:
         q = int(self._quantum_var.get())
@@ -114,7 +122,10 @@ class SimulatorApp:
         self._clock_var.set(f"Reloj: {self._kernel.clock}")
 
     def _refresh_panels(self) -> None:
-        """Los paneles especializados se enlazan en commits posteriores."""
+        self._rr_panel.refresh(
+            self._kernel.scheduler_gate.walk_ready_ring(),
+            self._kernel.scheduler_gate.current_process(),
+        )
 
     @property
     def root(self) -> tk.Tk:
