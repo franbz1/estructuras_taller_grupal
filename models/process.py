@@ -53,6 +53,7 @@ class Process:
     arrival_tick: int = -1
     start_tick: int = -1
     finish_tick: int = -1
+    is_idle: bool = False
 
     def __post_init__(self) -> None:
         if not self.plan:

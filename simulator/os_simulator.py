@@ -44,6 +44,7 @@ class OSSimulator:
         self._logger = SimulatorLogger(emit_to_stdout=verbosity)
         self._registry: List[Process] = []
         self._clock = 0
+        self._boot_idle_process()
 
     @property
     def clock(self) -> int:
@@ -94,6 +95,15 @@ class OSSimulator:
 
         return rookie
 
+    def _boot_idle_process(self) -> None:
+        """Reserve PID 0 as a permanent idle workload whenever no real job is runnable."""
+
+        idle_plan = (("cpu", 9_999_999),)
+        idle_proc = Process(pid=0, name="idle", priority=0, plan=idle_plan, is_idle=True)
+        idle_proc.arrival_tick = self._clock
+        self._pcb_board.add_process(idle_proc)
+        self._scheduler.enqueue_ready(idle_proc)
+
     # ---------------------------------------------------------------- simulation kernel
     def tick(self) -> None:
         self._clock += 1
@@ -103,8 +113,7 @@ class OSSimulator:
 
         current = self._scheduler.current_process()
         if current is None:
-            self._logger.record("cpu", "CPU idle slice — ready ring empty")
-            return
+            raise RuntimeError("Ready ring is empty; idle PID 0 should always be present")
 
         if current.state == ProcessState.TERMINATED:
             self._purge_stale_execution_context(current)
@@ -225,6 +234,10 @@ class OSSimulator:
         )
 
     def _handle_cpu_burst_rollout(self, proc: Process) -> bool:
+        if proc.is_idle:
+            proc.cpu_burst_remaining = 9_999_999
+            return False
+
         descriptor = proc.advance_plan_pointer()
 
         if isinstance(descriptor, LiteralBurst) and descriptor.kind == "DONE":
@@ -249,6 +262,9 @@ class OSSimulator:
         return False
 
     def _finalize_process_accounts(self, proc: Process) -> None:
+        if proc.is_idle:
+            return
+
         proc.finish_tick = self._clock
         self._scheduler.dequeue_matching(lambda runnable: runnable.pid == proc.pid)
         self._pcb_board.remove_process(proc.pid)
