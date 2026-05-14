@@ -38,10 +38,10 @@ class PCBTableFrame(ttk.Frame):
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         for tag, fg in (
-            ("ready", "#1f6feb"),
-            ("running", "#1a7f37"),
-            ("blocked", "#9a6700"),
-            ("terminated", "#6e7781"),
+            ("ready", "#58a6ff"),
+            ("running", "#3fb950"),
+            ("blocked", "#d29922"),
+            ("terminated", "#8b949e"),
         ):
             self._tree.tag_configure(tag, foreground=fg)
 
@@ -74,7 +74,7 @@ class ReadyRingFrame(ttk.Frame):
         c.delete("all")
         w = int(c.winfo_width() or 340)
         h = int(c.winfo_height() or 320)
-        c.configure(background="#1e1e1e")
+        c.configure(background="#0d1117")
 
         nodes = list(scheduler_nodes)
         n = len(nodes)
@@ -83,7 +83,7 @@ class ReadyRingFrame(ttk.Frame):
                 w // 2,
                 h // 2,
                 text="Anillo vacío (idle)",
-                fill="#888888",
+                fill="#8b949e",
                 font=("Segoe UI", 11),
             )
             return
@@ -102,18 +102,18 @@ class ReadyRingFrame(ttk.Frame):
         for i in range(n):
             x0, y0 = positions[i]
             x1, y1 = positions[(i + 1) % n]
-            c.create_line(x0, y0, x1, y1, fill="#444444", width=2)
+            c.create_line(x0, y0, x1, y1, fill="#30363d", width=2)
 
         for proc, (x, y) in zip(nodes, positions):
             is_current = current is not None and proc.pid == current.pid
-            outline = "#ff5555" if is_current else "#4da3ff"
+            outline = "#f85149" if is_current else "#58a6ff"
             width_o = 4 if is_current else 2
             c.create_oval(
                 x - node_r,
                 y - node_r,
                 x + node_r,
                 y + node_r,
-                fill="#2d2d2d",
+                fill="#161b22",
                 outline=outline,
                 width=width_o,
             )
@@ -121,11 +121,11 @@ class ReadyRingFrame(ttk.Frame):
                 x,
                 y - 8,
                 text=str(proc.pid),
-                fill="#ffffff",
+                fill="#f0f6fc",
                 font=("Segoe UI Semibold", 10),
             )
             short = proc.name if len(proc.name) <= 10 else proc.name[:9] + "…"
-            c.create_text(x, y + 10, text=short, fill="#aaaaaa", font=("Segoe UI", 8))
+            c.create_text(x, y + 10, text=short, fill="#8b949e", font=("Segoe UI", 8))
 
 
 class IODevicesFrame(ttk.Frame):
@@ -141,8 +141,8 @@ class IODevicesFrame(ttk.Frame):
             font=("Consolas", 10),
             relief=tk.FLAT,
             borderwidth=0,
-            background="#1e1e1e",
-            foreground="#d4d4d4",
+            background="#0d1117",
+            foreground="#c9d1d9",
             insertbackground="#ffffff",
         )
         scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self._text.yview)
@@ -191,8 +191,8 @@ class EventLogFrame(ttk.Frame):
             font=("Consolas", 10),
             relief=tk.FLAT,
             borderwidth=0,
-            background="#1e1e1e",
-            foreground="#d4d4d4",
+            background="#0d1117",
+            foreground="#c9d1d9",
             insertbackground="#ffffff",
         )
         scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self._text.yview)
@@ -255,4 +255,33 @@ class EventLogFrame(ttk.Frame):
         self._text.configure(state=tk.NORMAL)
         self._text.delete("1.0", tk.END)
         self._text.configure(state=tk.DISABLED)
+
+
+class ReportWindow(tk.Toplevel):
+    """Ventana modal con el resultado de `generate_report()`."""
+
+    def __init__(self, parent: tk.Misc, report: dict[str, object]) -> None:
+        super().__init__(parent)
+        self.title("Reporte del simulador")
+        self.configure(background="#0d1117")
+        self.transient(parent)
+        self.grab_set()
+
+        txt = tk.Text(
+            self,
+            width=82,
+            height=26,
+            wrap=tk.WORD,
+            font=("Consolas", 10),
+            background="#161b22",
+            foreground="#f0f6fc",
+            insertbackground="#f0f6fc",
+            relief=tk.FLAT,
+        )
+        txt.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        for key, value in report.items():
+            txt.insert(tk.END, f"{key}: {value}\n")
+        txt.configure(state=tk.DISABLED)
+
+        ttk.Button(self, text="Cerrar", command=self.destroy).pack(pady=(0, 8))
 

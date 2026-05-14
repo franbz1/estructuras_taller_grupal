@@ -9,32 +9,54 @@ from typing import Optional
 from simulator import OSSimulator
 
 from ui.scenario import populate_demo_processes
-from ui.widgets import EventLogFrame, IODevicesFrame, PCBTableFrame, ReadyRingFrame
+from ui.widgets import (
+    EventLogFrame,
+    IODevicesFrame,
+    PCBTableFrame,
+    ReadyRingFrame,
+    ReportWindow,
+)
 
 
 class SimulatorApp:
-    """Aplicación Tkinter: reloj simulado, paso a paso y reinicio."""
+    """Aplicación Tkinter: reloj simulado, paso a paso, auto-run e informes."""
 
     def __init__(self, root: tk.Tk) -> None:
         self._root = root
-        root.title("Simulador OS — Planificador RR + I/O")
+        root.title("Simulador OS — RR + I/O")
         root.geometry("1200x720")
         root.minsize(960, 600)
+        root.configure(background="#0d1117")
 
         self._pcb_capacity = 32
         self._auto_job: Optional[str] = None
         self._speed_ms = 250
 
+        self._apply_dark_theme(root)
+
         toolbar = ttk.Frame(root, padding=6)
         toolbar.pack(side=tk.TOP, fill=tk.X)
 
         self._clock_var = tk.StringVar(value="Reloj: 0")
-        ttk.Label(toolbar, textvariable=self._clock_var, width=14).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Label(toolbar, textvariable=self._clock_var, width=16).pack(side=tk.LEFT, padx=(0, 12))
 
         ttk.Button(toolbar, text="Step", command=self._on_step).pack(side=tk.LEFT, padx=2)
         self._run_btn = ttk.Button(toolbar, text="Run", command=self._toggle_auto)
         self._run_btn.pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="Reset", command=self._on_reset).pack(side=tk.LEFT, padx=2)
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        ttk.Label(toolbar, text="Velocidad (ms):").pack(side=tk.LEFT)
+        self._speed_scale = ttk.Scale(
+            toolbar,
+            from_=100,
+            to=1000,
+            orient=tk.HORIZONTAL,
+            length=160,
+            command=self._on_speed_change,
+        )
+        self._speed_scale.set(float(self._speed_ms))
+        self._speed_scale.pack(side=tk.LEFT, padx=4)
 
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
         ttk.Label(toolbar, text="Quantum:").pack(side=tk.LEFT)
@@ -47,6 +69,9 @@ class SimulatorApp:
             textvariable=self._quantum_var,
         )
         self._quantum_spin.pack(side=tk.LEFT, padx=4)
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        ttk.Button(toolbar, text="Reporte", command=self._show_report).pack(side=tk.LEFT, padx=2)
 
         upper = ttk.Frame(root, padding=(6, 0))
         upper.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -67,7 +92,7 @@ class SimulatorApp:
         self._io_panel.pack(fill=tk.BOTH, expand=True)
 
         log_frame = ttk.LabelFrame(root, text="Log de eventos", padding=6)
-        log_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False)
+        log_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=6, pady=6)
         self._log_panel = EventLogFrame(log_frame)
         self._log_panel.pack(fill=tk.BOTH, expand=True)
 
@@ -75,6 +100,39 @@ class SimulatorApp:
         self._update_clock_title()
         self._rr_panel._canvas.bind("<Configure>", self._on_rr_resize)
         self._refresh_panels()
+
+    def _apply_dark_theme(self, root: tk.Tk) -> None:
+        style = ttk.Style(root)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        bg = "#0d1117"
+        fg = "#f0f6fc"
+        panel = "#161b22"
+        style.configure(".", background=bg, foreground=fg, fieldbackground=panel)
+        style.configure("TFrame", background=bg)
+        style.configure("TLabel", background=bg, foreground=fg)
+        style.configure("TLabelFrame", background=bg, foreground=fg)
+        style.configure("TLabelFrame.Label", background=bg, foreground=fg)
+        style.configure("TButton", background="#21262d", foreground=fg)
+        style.map("TButton", background=[("active", "#30363d")])
+        style.configure("Horizontal.TScale", background=bg, troughcolor="#21262d")
+        style.configure(
+            "Treeview",
+            background=panel,
+            foreground=fg,
+            fieldbackground=panel,
+            rowheight=22,
+        )
+        style.configure("Treeview.Heading", background="#21262d", foreground=fg)
+        style.map("Treeview", background=[("selected", "#264f78")])
+
+    def _on_speed_change(self, value: str) -> None:
+        try:
+            self._speed_ms = max(100, min(1000, int(float(value))))
+        except (TypeError, ValueError):
+            self._speed_ms = 250
 
     def _on_rr_resize(self, _evt: tk.Event) -> None:
         self._rr_panel.refresh(
@@ -124,7 +182,9 @@ class SimulatorApp:
         self._run_btn.configure(text="Run")
 
     def _update_clock_title(self) -> None:
-        self._clock_var.set(f"Reloj: {self._kernel.clock}")
+        t = self._kernel.clock
+        self._clock_var.set(f"Reloj: {t}")
+        self._root.title(f"Simulador OS — RR + I/O | t={t}")
 
     def _refresh_panels(self) -> None:
         self._pcb_panel.refresh(self._kernel._registry)
@@ -134,6 +194,9 @@ class SimulatorApp:
         )
         self._io_panel.refresh(self._kernel)
         self._log_panel.refresh_from_records(self._kernel.trace_sink().records)
+
+    def _show_report(self) -> None:
+        ReportWindow(self._root, dict(self._kernel.generate_report()))
 
     @property
     def root(self) -> tk.Tk:

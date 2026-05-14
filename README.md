@@ -17,12 +17,19 @@ Run the demo:
 python main.py
 ```
 
+Graphical UI (Tkinter, standard library):
+
+```bash
+python ui_main.py
+```
+
 ## Package layout
 
 - `data_structures/` — custom ADT implementations used by higher layers.
 - `models/` — domain objects (`Process`, `IODevice`, enums).
 - `simulator/` — scheduling, I/O subsystems and top-level simulator.
 - `utils/` — structured logging helpers.
+- `ui/` — Tkinter front-end for live PCB, RR ring, I/O queues and event log.
 
 ## Collaboration workflow
 
