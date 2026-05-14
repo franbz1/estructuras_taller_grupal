@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Mapping, MutableMapping, Sequence, Tuple
+from typing import List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 from data_structures.array import PCBFullError, PCBTable
 from models.process import IOSyscallPending, LiteralBurst, Process, ProcessState
@@ -20,6 +20,7 @@ class OSSimulator:
     """
 
     __slots__ = (
+        "_aging_interval",
         "_clock",
         "_io",
         "_logger",
@@ -34,9 +35,12 @@ class OSSimulator:
         pcb_capacity: int = 96,
         default_quantum: int = 4,
         verbosity: bool = True,
+        aging_interval: int = 5,
     ) -> None:
         if pcb_capacity <= 0:
             raise ValueError("PCB backing store must expose positive capacity")
+        if aging_interval <= 0:
+            raise ValueError("Priority aging interval must stay positive")
 
         self._pcb_board = PCBTable(pcb_capacity)
         self._scheduler = RoundRobinScheduler(default_quantum)
@@ -44,6 +48,8 @@ class OSSimulator:
         self._logger = SimulatorLogger(emit_to_stdout=verbosity)
         self._registry: List[Process] = []
         self._clock = 0
+        self._aging_interval = aging_interval
+        self._boot_idle_process()
 
     @property
     def clock(self) -> int:
@@ -65,13 +71,24 @@ class OSSimulator:
         return self._logger
 
     # ---------------------------------------------------------------- ingestion
-    def create_process(self, name: str, priority: int, plan: Sequence[Tuple[str, ...]]) -> Process:
+    def create_process(
+        self,
+        name: str,
+        priority: int,
+        plan: Sequence[Tuple[str, ...]],
+        *,
+        quantum: Optional[int] = None,
+    ) -> Process:
         slot_hint = self._pcb_board.first_available_slot()
         if slot_hint is None:
             raise PCBFullError("No free PCB slots available")
+        if quantum is not None and quantum <= 0:
+            raise ValueError("Per-process quantum overrides must stay positive integers")
 
         sculpted_plan = tuple(tuple(step) for step in plan)
         rookie = Process(pid=slot_hint, name=name, priority=priority, plan=sculpted_plan)
+        rookie.arrival_tick = self._clock
+        rookie.custom_quantum = quantum
 
         try:
             self._pcb_board.add_process(rookie)
@@ -93,23 +110,46 @@ class OSSimulator:
 
         return rookie
 
+    def _apply_priority_aging(self) -> None:
+        """Boost priorities for READY workloads that sit too long in the RR ring."""
+
+        for proc in self._scheduler.walk_ready_ring():
+            if proc.is_idle:
+                continue
+            if proc.state != ProcessState.READY:
+                continue
+            proc.ready_ticks += 1
+            if proc.ready_ticks % self._aging_interval == 0:
+                proc.priority += 1
+
+    def _boot_idle_process(self) -> None:
+        """Reserve PID 0 as a permanent idle workload whenever no real job is runnable."""
+
+        idle_plan = (("cpu", 9_999_999),)
+        idle_proc = Process(pid=0, name="idle", priority=0, plan=idle_plan, is_idle=True)
+        idle_proc.arrival_tick = self._clock
+        self._pcb_board.add_process(idle_proc)
+        self._scheduler.enqueue_ready(idle_proc)
+
     # ---------------------------------------------------------------- simulation kernel
     def tick(self) -> None:
         self._clock += 1
+        self._apply_priority_aging()
 
         for released in self._io.tick():
             self._finalize_device_feedback(released)
 
         current = self._scheduler.current_process()
         if current is None:
-            self._logger.record("cpu", "CPU idle slice — ready ring empty")
-            return
+            raise RuntimeError("Ready ring is empty; idle PID 0 should always be present")
 
         if current.state == ProcessState.TERMINATED:
             self._purge_stale_execution_context(current)
             return
 
         current.mark_running()
+        if current.start_tick == -1:
+            current.start_tick = self._clock
 
         try:
             current.consume_cpu_micro_step(self._clock)
@@ -135,14 +175,14 @@ class OSSimulator:
             self._scheduler.rotate_scheduler_pointer()
             successor = self._scheduler.current_process()
 
-            successor_pid = successor.pid if successor else "∅"
+            successor_pid = successor.pid if successor else "none"
             self._logger.record(
                 "rr",
-                f"Quantum shelf drained — rollover pid={previous.pid} → pid={successor_pid}",
+                f"Quantum shelf drained — rollover pid={previous.pid} -> pid={successor_pid}",
             )
 
             if successor:
-                successor.reset_quantum_slice(self._scheduler.quantum)
+                successor.reset_quantum_slice(self._effective_quantum(successor))
                 successor.mark_running()
 
     def run(self, total_ticks: int) -> None:
@@ -160,6 +200,25 @@ class OSSimulator:
 
         pcb_pressure = sum(1 for _ in self._pcb_board.all_registered())
 
+        per_process_stats: List[Mapping[str, object]] = []
+        for phantom in self._registry:
+            if phantom.finish_tick < 0:
+                continue
+            turnaround = phantom.finish_tick - phantom.arrival_tick
+            service_span = phantom.finish_tick - phantom.start_tick
+            waiting = turnaround - service_span
+            per_process_stats.append(
+                {
+                    "pid": phantom.pid,
+                    "name": phantom.name,
+                    "arrival_tick": phantom.arrival_tick,
+                    "start_tick": phantom.start_tick,
+                    "finish_tick": phantom.finish_tick,
+                    "turnaround_ticks": turnaround,
+                    "waiting_ticks": waiting,
+                }
+            )
+
         backlog: MutableMapping[str, int] = {}
         for bridge_type, facade in self._io.devices_snapshot().items():
             backlog[bridge_type.name.lower()] = facade.backlog_len()
@@ -173,7 +232,9 @@ class OSSimulator:
             "process_states": dict(state_bins),
             "registered_process_total": len(self._registry),
             "round_robin_depth": rr_richness,
-            "ready_ring_order": ring_outline,            "io_device_backlogs": dict(backlog),
+            "ready_ring_order": ring_outline,
+            "per_process_stats": per_process_stats,
+            "io_device_backlogs": dict(backlog),
             "telemetry_buckets": self._logger.buckets_snapshot(),
         }
 
@@ -201,6 +262,10 @@ class OSSimulator:
         )
 
     def _handle_cpu_burst_rollout(self, proc: Process) -> bool:
+        if proc.is_idle:
+            proc.cpu_burst_remaining = 9_999_999
+            return False
+
         descriptor = proc.advance_plan_pointer()
 
         if isinstance(descriptor, LiteralBurst) and descriptor.kind == "DONE":
@@ -217,7 +282,7 @@ class OSSimulator:
             )
             return True
 
-        proc.reset_quantum_slice(self._scheduler.quantum)
+        proc.reset_quantum_slice(self._effective_quantum(proc))
         self._logger.record(
             "burst",
             f"Activated next CPU slug pid={proc.pid} leftover={proc.cpu_burst_remaining}",
@@ -225,7 +290,18 @@ class OSSimulator:
         return False
 
     def _finalize_process_accounts(self, proc: Process) -> None:
+        if proc.is_idle:
+            return
+
+        proc.finish_tick = self._clock
         self._scheduler.dequeue_matching(lambda runnable: runnable.pid == proc.pid)
         self._pcb_board.remove_process(proc.pid)
         if proc.state != ProcessState.TERMINATED:
             proc.finalize_termination_cleanup()
+
+    def _effective_quantum(self, proc: Process) -> int:
+        """Returns the scheduler quantum slice honoring optional per-process overrides."""
+
+        if proc.custom_quantum is not None:
+            return proc.custom_quantum
+        return self._scheduler.quantum
