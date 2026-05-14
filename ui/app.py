@@ -9,7 +9,7 @@ from typing import Optional
 from simulator import OSSimulator
 
 from ui.scenario import populate_demo_processes
-from ui.widgets import EventLogFrame, PCBTableFrame, ReadyRingFrame
+from ui.widgets import EventLogFrame, IODevicesFrame, PCBTableFrame, ReadyRingFrame
 
 
 class SimulatorApp:
@@ -61,9 +61,10 @@ class SimulatorApp:
         self._rr_panel = ReadyRingFrame(self._rr_placeholder)
         self._rr_panel.pack(fill=tk.BOTH, expand=True)
 
-        self._io_placeholder = ttk.LabelFrame(upper, text="Dispositivos I/O", padding=8)
+        self._io_placeholder = ttk.LabelFrame(upper, text="Dispositivos I/O", padding=4)
         self._io_placeholder.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
-        ttk.Label(self._io_placeholder, text="(panel I/O — pendiente)").pack(anchor=tk.W)
+        self._io_panel = IODevicesFrame(self._io_placeholder)
+        self._io_panel.pack(fill=tk.BOTH, expand=True)
 
         log_frame = ttk.LabelFrame(root, text="Log de eventos", padding=6)
         log_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False)
@@ -131,6 +132,7 @@ class SimulatorApp:
             self._kernel.scheduler_gate.walk_ready_ring(),
             self._kernel.scheduler_gate.current_process(),
         )
+        self._io_panel.refresh(self._kernel)
         self._log_panel.refresh_from_records(self._kernel.trace_sink().records)
 
     @property

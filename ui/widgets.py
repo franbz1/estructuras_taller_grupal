@@ -7,7 +7,9 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Iterable, Optional, Sequence
 
-from models.process import Process
+from models.io_device import IODeviceType
+from models.process import Process, ProcessState
+from simulator import OSSimulator
 
 
 class PCBTableFrame(ttk.Frame):
@@ -124,6 +126,54 @@ class ReadyRingFrame(ttk.Frame):
             )
             short = proc.name if len(proc.name) <= 10 else proc.name[:9] + "…"
             c.create_text(x, y + 10, text=short, fill="#aaaaaa", font=("Segoe UI", 8))
+
+
+class IODevicesFrame(ttk.Frame):
+    """Vista de colas por dispositivo I/O simulado."""
+
+    def __init__(self, parent: tk.Misc, **kwargs: object) -> None:
+        super().__init__(parent, **kwargs)
+        self._text = tk.Text(
+            self,
+            height=14,
+            width=36,
+            wrap=tk.WORD,
+            font=("Consolas", 10),
+            relief=tk.FLAT,
+            borderwidth=0,
+            background="#1e1e1e",
+            foreground="#d4d4d4",
+            insertbackground="#ffffff",
+        )
+        scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self._text.yview)
+        self._text.configure(yscrollcommand=scroll.set, state=tk.DISABLED)
+        self._text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def refresh(self, kernel: OSSimulator) -> None:
+        snapshot = kernel.io_plane.devices_snapshot()
+        registry: list[Process] = list(kernel._registry)
+        lines: list[str] = []
+
+        for dtype in (IODeviceType.DISK, IODeviceType.NETWORK, IODeviceType.PRINTER):
+            dev = snapshot[dtype]
+            backlog = dev.backlog_len()
+            blocked_pids = sorted(
+                p.pid
+                for p in registry
+                if p.state == ProcessState.BLOCKED
+                and p.pending_io_keyword is not None
+                and p.pending_io_keyword.upper() == dtype.name
+            )
+            pid_str = ", ".join(str(pid) for pid in blocked_pids) or "—"
+            lines.append(f"▸ {dtype.name}  (cola: {backlog})")
+            lines.append(f"   PIDs bloqueados: {pid_str}")
+            lines.append("")
+
+        self._text.configure(state=tk.NORMAL)
+        self._text.delete("1.0", tk.END)
+        self._text.insert(tk.END, "\n".join(lines).rstrip() + "\n")
+        self._text.configure(state=tk.DISABLED)
 
 
 class EventLogFrame(ttk.Frame):
